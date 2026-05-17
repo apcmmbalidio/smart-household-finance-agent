@@ -10,6 +10,7 @@
 |---|---|
 | **Receipt Scanning** | Upload a photo — Gemini AI extracts store, date, items, brands, and total automatically |
 | **Itemized Categorization** | Each item on a receipt is individually categorized (e.g., Beverages, Toiletries, Frozen Goods) |
+| **AI Assistant** | Chat-based finance agent that retrieves your data and provides personalized insights |
 | **Cloud Storage** | All expenses stored in Supabase (PostgreSQL) with full CRUD support |
 | **Visual Dashboard** | Interactive charts: spending breakdown, monthly trends, payment insights, and price tracking |
 | **Budget Management** | Set monthly budget limits with real-time progress tracking and alerts |
@@ -27,11 +28,13 @@ smart-household-finance-agent/
 ├── requirements.txt       # Python dependencies
 ├── README.md
 ├── setup_tables.sql       # Supabase database schema
-├── app.py                 # Main Streamlit app (6 pages)
+├── app.py                 # Main Streamlit app (7 pages)
 ├── config.py              # Config, categories, payment methods
 ├── vision_agent.py        # Gemini Vision AI integration
+├── chat_agent.py          # Finance AI chat agent (agentic pipeline)
 ├── expense_manager.py     # CRUD database operations
 ├── charts.py              # Data visualization functions
+├── agent_demo.ipynb       # Jupyter notebook demo with test cases
 └── screenshots/           # Documentation screenshots
 ```
 

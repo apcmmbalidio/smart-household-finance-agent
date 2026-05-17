@@ -10,6 +10,7 @@ from expense_manager import ExpenseManager
 from vision_agent import VisionAgent
 from charts import (render_pie_chart, render_monthly_bar, render_payment_chart,
                     render_price_tracker, render_payment_category_heatmap)
+from chat_agent import FinanceChatAgent
 
 st.set_page_config(page_title="Household Finance Tracker", page_icon="P", layout="wide", initial_sidebar_state="expanded")
 
@@ -174,7 +175,7 @@ budget = st.session_state.monthly_budget
 # ── Sidebar ──
 with st.sidebar:
     st.markdown(f'<div class="sidebar-brand"><h3>{nickname}\'s Tracker</h3><div class="tag">Household Finance Manager</div></div>', unsafe_allow_html=True)
-    page = st.radio("Nav", ["Dashboard", "Add Expense", "Scan Receipt", "Analytics", "History", "Settings"], label_visibility="collapsed")
+    page = st.radio("Nav", ["Dashboard", "Add Expense", "Scan Receipt", "Analytics", "History", "AI Assistant", "Settings"], label_visibility="collapsed")
 
     pct_sb = min(budget and (em.get_expense_summary(budget)["total_spent"] / budget * 100) or 0, 100)
     bar_c = "#27ae60" if pct_sb < 70 else "#FF6B35" if pct_sb < 90 else "#e74c3c"
@@ -408,6 +409,92 @@ elif page == "History":
                     else: st.error(msg)
     else:
         st.info(f"No expenses for {datetime(h_year,h_month,1).strftime('%B %Y')}.")
+
+# ════════════════════════════════════════════════════
+#  AI ASSISTANT (Chat Agent)
+# ════════════════════════════════════════════════════
+elif page == "AI Assistant":
+    st.markdown("## AI Assistant")
+    st.caption("Ask questions about your spending. The agent retrieves your data, analyzes it, and provides personalized insights.")
+
+    # Initialize chat agent
+    if "chat_agent" not in st.session_state:
+        try:
+            st.session_state.chat_agent = FinanceChatAgent(em, budget)
+        except ValueError:
+            st.session_state.chat_agent = None
+    if "chat_messages" not in st.session_state:
+        st.session_state.chat_messages = []
+
+    agent = st.session_state.chat_agent
+    if agent is None:
+        st.error("Chat agent unavailable. Set GEMINI_API_KEY in .env.")
+        st.stop()
+
+    # Update budget if changed
+    agent.budget = budget
+
+    # Suggestion chips
+    st.markdown('<div class="section-title">Try asking</div>', unsafe_allow_html=True)
+    suggestions = [
+        "Am I over budget this month?",
+        "What are my top 5 biggest expenses?",
+        "Compare my spending this month vs last month",
+        "How can I save money based on my spending?",
+        "How much did I spend on food?",
+        "What payment methods do I use most?",
+    ]
+    chip_cols = st.columns(3)
+    for idx, sug in enumerate(suggestions):
+        with chip_cols[idx % 3]:
+            if st.button(sug, key=f"sug_{idx}", use_container_width=True):
+                st.session_state.chat_messages.append({"role": "user", "content": sug})
+                with st.spinner("Analyzing..."):
+                    result = agent.chat(sug)
+                st.session_state.chat_messages.append({
+                    "role": "assistant", "content": result["response"],
+                    "meta": {"intent": result["intent"], "steps": result["steps"]}
+                })
+                st.rerun()
+
+    st.markdown("---")
+
+    # Display chat history
+    for msg in st.session_state.chat_messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+            if msg["role"] == "assistant" and "meta" in msg:
+                with st.expander("Agent reasoning steps"):
+                    for step in msg["meta"]["steps"]:
+                        st.text(step)
+                    st.text(f"Intent: {msg['meta']['intent']}")
+
+    # Chat input
+    if user_input := st.chat_input("Ask about your finances..."):
+        st.session_state.chat_messages.append({"role": "user", "content": user_input})
+        with st.chat_message("user"):
+            st.markdown(user_input)
+
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
+                result = agent.chat(user_input)
+            st.markdown(result["response"])
+            with st.expander("Agent reasoning steps"):
+                for step in result["steps"]:
+                    st.text(step)
+                st.text(f"Intent: {result['intent']}")
+
+        st.session_state.chat_messages.append({
+            "role": "assistant", "content": result["response"],
+            "meta": {"intent": result["intent"], "steps": result["steps"]}
+        })
+
+    # Clear chat
+    if st.session_state.chat_messages:
+        if st.button("Clear conversation"):
+            st.session_state.chat_messages = []
+            agent.clear_history()
+            st.rerun()
 
 # ════════════════════════════════════════════════════
 #  SETTINGS
