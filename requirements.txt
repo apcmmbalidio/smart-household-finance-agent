@@ -1,0 +1,26 @@
+# ============================================================
+# Smart Household Finance Agent — Python Dependencies
+# ============================================================
+# Install with: pip install -r requirements.txt
+
+# ── Core App Framework ────────────────────────────────────
+streamlit>=1.35.0
+
+# ── Anthropic Claude (Vision) ─────────────────────────────
+anthropic>=0.28.0
+
+# ── Supabase (Database) ───────────────────────────────────
+supabase>=2.5.0
+
+# ── Image Handling ────────────────────────────────────────
+Pillow>=10.3.0
+
+# ── Environment Variables ─────────────────────────────────
+python-dotenv>=1.0.0
+
+# ── Data Processing & Display ─────────────────────────────
+pandas>=2.2.0
+plotly>=5.22.0
+
+# ── Date / Time Utilities ─────────────────────────────────
+python-dateutil>=2.9.0
