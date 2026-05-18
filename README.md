@@ -19,6 +19,34 @@
 
 ---
 
+## AI Assistant Feature
+
+The application includes an **autonomous, rule-based AI Finance Chat Agent** built directly into the UI. To save on precious LLM API quotas, the chatbot performs fully local multi-step reasoning using a sophisticated decision-tree and data retrieval system.
+
+### Agent Flow
+```mermaid
+graph TD
+    A[User Query] --> B(Intent Classification)
+    B -->|Keyword Matching| C{Intent Identified}
+    C -->|Budget Check| D[Fetch Monthly Summary]
+    C -->|Top Expenses| E[Fetch Ranked Expenses]
+    C -->|Savings Tips| F[Analyze Recurring Items]
+    C -->|Price Tracking| G[Query Item Price History]
+    C -->|General Search| H[Execute Punctuation-Aware Search]
+    D & E & F & G & H --> I(Apply Decision Rules & Templates)
+    I --> J[Store in Conversation Memory]
+    J --> K[Generate Final Markdown Response]
+```
+
+### Capabilities
+- **Budget Status Checks**: Automatically computes spending velocity, threshold warnings, and surplus margins.
+- **Punctuation-Aware Keyword Search**: Searches items by brand, category, vendor, or payment type, separating counts/quantities from dollar amounts (e.g., distinguishing between "How many Coca-Colas did I buy?" vs. "How much did I spend on Coca-Cola?").
+- **Yearly & Monthly Comparisons**: Renders clean Markdown tables comparing month-over-month expenses.
+- **Personalized Savings Insights**: Pinpoints your highest spending categories and offers targeted advice.
+- **Short-Term Memory**: Retains chat history in Streamlit session memory to keep context alive during the chat session.
+
+---
+
 ## Project Structure
 
 ```
@@ -35,7 +63,6 @@ smart-household-finance-agent/
 ├── expense_manager.py     # CRUD database operations
 ├── charts.py              # Data visualization functions
 ├── agent_demo.ipynb       # Jupyter notebook demo with test cases
-└── screenshots/           # Documentation screenshots
 ```
 
 ---
@@ -97,6 +124,7 @@ Open [http://localhost:8501](http://localhost:8501) in your browser.
 | **Scan Receipt** | Upload a receipt photo for AI-powered itemized extraction |
 | **Analytics** | Spending breakdown, monthly trends, payment insights, price tracker |
 | **History** | Full transaction table with filters, CSV export, and expense management |
+| **AI Assistant** | Chat-based assistant with multi-step reasoning for personalized insights |
 | **Settings** | Update nickname and monthly budget |
 
 ---

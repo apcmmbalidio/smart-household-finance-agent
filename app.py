@@ -464,10 +464,11 @@ elif page == "AI Assistant":
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
             if msg["role"] == "assistant" and "meta" in msg:
-                with st.expander("Agent reasoning steps"):
+                with st.expander("Agent Reasoning Steps"):
                     for step in msg["meta"]["steps"]:
-                        st.text(step)
-                    st.text(f"Intent: {msg['meta']['intent']}")
+                        step_clean = step.split(". ", 1)[-1] if ". " in step else step
+                        st.markdown(f"- {step_clean}")
+                    st.caption(f"Classified Intent: `{msg['meta']['intent']}`")
 
     # Chat input
     if user_input := st.chat_input("Ask about your finances..."):
@@ -479,10 +480,11 @@ elif page == "AI Assistant":
             with st.spinner("Thinking..."):
                 result = agent.chat(user_input)
             st.markdown(result["response"])
-            with st.expander("Agent reasoning steps"):
+            with st.expander("Agent Reasoning Steps"):
                 for step in result["steps"]:
-                    st.text(step)
-                st.text(f"Intent: {result['intent']}")
+                    step_clean = step.split(". ", 1)[-1] if ". " in step else step
+                    st.markdown(f"- {step_clean}")
+                st.caption(f"Classified Intent: `{result['intent']}`")
 
         st.session_state.chat_messages.append({
             "role": "assistant", "content": result["response"],

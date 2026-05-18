@@ -217,6 +217,170 @@ class FinanceChatAgent:
 
     def _generate_response(self, intent: str, context: dict, user_message: str) -> str:
         """Apply decision rules and templates to generate a data-driven response."""
+        # Check for suggestive affordability checks first
+        msg_lower = user_message.lower()
+        
+        # We check for a price OR keywords indicating an affordability question
+        has_price_mention = False
+        clean_msg = msg_lower.replace(",", "") # Remove commas for easy parsing
+        import re
+        prices_found = re.findall(r'\b\d+(?:\.\d{1,2})?\b', clean_msg)
+        if prices_found:
+            if len(prices_found) == 1:
+                has_price_mention = True
+            else:
+                for p in prices_found:
+                    val = float(p)
+                    if val > 0 and abs(val - self.budget) > 1.0: # not the budget itself
+                        has_price_mention = True
+                        break
+
+        is_affordability_query = has_price_mention and any(w in msg_lower for w in ["can i", "should i", "safe to", "is it safe", "budget", "afford"])
+        is_affordability_query = is_affordability_query or any(w in msg_lower for w in ["everyday", "every day", "daily", "pickup", "starbucks", "grab", "netflix", "spotify", "smirnoff", "mule", "electricity bill", "electric bill", "water bill", "rent"])
+
+        if is_affordability_query:
+            # Default values
+            item_name = "habit/purchase"
+            unit_price = 100.0
+            frequency = "daily"
+            category = "Other"
+            
+            # 1. Determine Frequency
+            if any(w in msg_lower for w in ["electricity", "electric", "meralco", "water", "bill", "rent", "subscription", "netflix", "spotify", "tuition", "internet", "monthly", "per month"]):
+                frequency = "monthly"
+            
+            # 2. Extract Price
+            clean_msg = msg_lower.replace(",", "")
+            prices_found = re.findall(r'\b\d+(?:\.\d{1,2})?\b', clean_msg)
+            extracted_price = None
+            if prices_found:
+                if len(prices_found) == 1:
+                    extracted_price = float(prices_found[0])
+                else:
+                    for p in prices_found:
+                        val = float(p)
+                        if val > 0 and abs(val - self.budget) > 1.0:
+                            extracted_price = val
+                            break
+                    if extracted_price is None:
+                        extracted_price = float(prices_found[0])
+            
+            # 3. Dynamic Item Name Extraction
+            item_match = re.search(r'(?:can\s+i\s+(?:drink|buy|have|eat|get|enjoy|purchase|consume|pay|order|have)|safe\s+to\s+have)\s+([a-zA-Z0-9\s\-\'\’]+?)(?:\s+(?:everyday|every\s+day|daily|with|for|per|my|monthly|this))', msg_lower)
+            if item_match:
+                extracted_item = item_match.group(1).strip()
+                # Clean up leading numbers
+                extracted_item = re.sub(r'^\d+\s*', '', extracted_item)
+                # Clean up leading articles/filler words
+                extracted_item = re.sub(r'^(?:a|an|the|some|any|in|for)\s+', '', extracted_item)
+                if extracted_item:
+                    item_name = extracted_item.title()
+            
+            # Simple keyword overrides for common terms
+            if "electricity" in msg_lower or "electric" in msg_lower or "meralco" in msg_lower:
+                item_name = "Electricity Bill"
+                category = "Utilities"
+                frequency = "monthly"
+                if extracted_price is None:
+                    extracted_price = 10000.0 # default Meralco average
+            elif "water" in msg_lower:
+                item_name = "Water Bill"
+                category = "Utilities"
+                frequency = "monthly"
+            elif "rent" in msg_lower:
+                item_name = "Rent"
+                category = "Utilities"
+                frequency = "monthly"
+            elif "pickup" in msg_lower:
+                item_name = "Pickup Coffee"
+                category = "Beverages"
+            elif "starbucks" in item_name.lower() or "starbucks" in msg_lower:
+                item_name = "Starbucks Coffee"
+                category = "Beverages"
+            elif "smirnoff" in msg_lower or "mule" in msg_lower:
+                item_name = "Smirnoff Mule"
+                category = "Beverages"
+                
+            # If price was extracted, use it
+            if extracted_price is not None:
+                unit_price = extracted_price
+            else:
+                if "coffee" in item_name.lower():
+                    unit_price = 85.0 if "pickup" in item_name.lower() else 120.0
+                elif "netflix" in item_name.lower():
+                    unit_price = 399.0
+                elif "spotify" in item_name.lower():
+                    unit_price = 149.0
+                    
+            # 4. Map Item to Category
+            item_name_lower = item_name.lower()
+            if any(w in item_name_lower for w in ["electricity", "electric", "meralco", "water", "rent", "utility", "utilities", "internet", "phone"]):
+                category = "Utilities"
+            elif any(w in item_name_lower for w in ["coffee", "pickup", "starbucks", "smirnoff", "mule", "coke", "soda", "drink", "beer"]):
+                category = "Beverages"
+            elif any(w in item_name_lower for w in ["food", "eat", "dining", "jollibee", "mcdonald", "mcdo", "kfc", "restaurant"]):
+                category = "Dining Out"
+            elif any(w in item_name_lower for w in ["grab", "taxi", "angkas", "joyride", "gas", "fuel", "ride"]):
+                category = "Transportation"
+            elif any(w in item_name_lower for w in ["netflix", "spotify", "hbo", "show", "entertainment"]):
+                category = "Entertainment"
+                
+            # 5. Determine Cost
+            # Large expenses are naturally treated as one-time/monthly totals, not daily recurring habits
+            if unit_price >= 1000.0:
+                frequency = "monthly"
+                
+            if frequency == "monthly":
+                monthly_cost = unit_price
+                freq_desc = f"P {unit_price:,.2f} per month"
+            else:
+                monthly_cost = unit_price * 30
+                freq_desc = f"P {unit_price:,.2f} daily"
+                
+            s = context.get("summary", self.em.get_expense_summary(self.budget))
+            remaining = s.get("remaining_budget", self.budget - s.get("total_spent", 0))
+            spent = s.get("total_spent", 0)
+            
+            cost_pct = (monthly_cost / self.budget * 100) if self.budget > 0 else 0
+            
+            lines = [
+                f"### Affordability & Planning Analysis: {item_name}\n",
+                f"Let's look at the financial impact of this {frequency} purchase:\n",
+                f"- Cost per item: {freq_desc}",
+                f"- Projected monthly total cost: **P {monthly_cost:,.2f}** ({cost_pct:.1f}% of your P {self.budget:,.2f} monthly budget)\n",
+            ]
+            
+            if remaining >= monthly_cost:
+                lines.append(f"Affordability Status: Yes, you can safely afford this!")
+                lines.append(f"Even after adding this {frequency} {item_name} habit, you would still have **P {remaining - monthly_cost:,.2f}** remaining in your budget for this month.")
+                
+                lines.append("\n**Actionable Plan & Suggestions:**")
+                cat_spent = s.get("by_category", {}).get(category, 0)
+                lines.append(f"1. **{category} Spending Context**: You have spent **P {cat_spent:,.2f}** on {category} this month. Adding **P {monthly_cost:,.2f}** would bring your monthly {category} total to **P {cat_spent + monthly_cost:,.2f}**.")
+                
+                if category == "Beverages":
+                    if "pickup" in item_name_lower:
+                        lines.append(f"2. **Savings Optimization**: To enjoy your Pickup Coffee even more efficiently, download the Pickup App to buy discounted vouchers or earn loyalty rewards.")
+                    else:
+                        lines.append(f"2. **Savings Optimization**: Consider buying in bulk or checking if there are membership or bundle discounts for {item_name}.")
+                    lines.append(f"3. **Category Safeguard**: Set a mental cap of **P 3,000.00** for the Beverages category to ensure you don't overspend while maintaining this daily routine.")
+                elif category == "Utilities":
+                    lines.append(f"2. **Savings Optimization**: Look for ways to improve household efficiency (e.g., switching to inverter appliances, scheduling aircon usage, or unplugging phantom loads).")
+                    lines.append(f"3. **Category Safeguard**: Your Utilities budget can be highly seasonal (higher electricity bill in summer months). Keep a buffer of **P 5,000.00** in your savings for peak utility bills.")
+                elif category == "Entertainment":
+                    lines.append(f"2. **Savings Optimization**: Look for annual billing plans or family plans which can save you up to 30-50% off individual monthly pricing.")
+                    lines.append(f"3. **Category Safeguard**: Audit your active subscriptions quarterly to prune any services you don't watch or use frequently.")
+                else:
+                    lines.append(f"2. **Savings Optimization**: Search for digital coupons, loyalty cards, or promos to discount this purchase.")
+                    lines.append(f"3. **Category Safeguard**: Log every transaction in the app to maintain visibility and prevent minor purchases from snowballing.")
+            else:
+                lines.append(f"Affordability Status: Warning: This will put a heavy strain on your budget!")
+                lines.append(f"Your remaining budget is **P {remaining:,.2f}**, which is less than the projected monthly cost of **P {monthly_cost:,.2f}**.")
+                lines.append("\n**Alternate Plan & Suggestions:**")
+                lines.append(f"1. **Reduce Frequency/Usage**: Try to reduce electricity usage by 15-20% to fit this bill within your budget, or find areas to cut back on discretionary categories.")
+                lines.append(f"2. **Lower Cost Alternatives**: Look for cheaper options or optimize existing appliances to protect your monthly savings rate.")
+                
+            return "\n".join(lines)
 
         if intent == "budget_check":
             s = context["summary"]
