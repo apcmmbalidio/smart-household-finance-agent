@@ -61,16 +61,56 @@ class VisionAgent:
                 "- Categorize each item individually.\n"
                 "- Separate brand from product name.\n"
                 "- total_amount = receipt grand total.\n"
-                "- Do NOT wrap in markdown code fences."
+                "- Do NOT wrap in markdown code fences.\n"
+                "- SPECIAL RULE FOR MERALCO BILLS: If this is a Meralco bill/receipt, "
+                "do NOT extract the complex line-by-line charge breakdown. Instead, "
+                "extract only ONE single item: name='Electricity Bill', brand='Meralco', "
+                "category='Utilities', quantity=1, total=amount next to 'Please Pay' or "
+                "'Total Amount Due', unit_price=same amount. Also set the overall "
+                "total_amount of the receipt to this 'Please Pay' amount.\n"
+                "- BRAND & STORE RULE: If you can identify a brand name for the bill or items "
+                "(e.g., Meralco), use it to fill the overall 'store_name' field."
             )
 
-            response = self.client.models.generate_content(
-                model=MODEL_NAME,
-                contents=[
-                    types.Part.from_bytes(data=image_data, mime_type=mime),
-                    prompt,
-                ],
-            )
+            import time
+            from google.genai.errors import APIError
+
+            max_retries = 3
+            backoff_factor = 2
+            response = None
+            last_error = None
+
+            for attempt in range(max_retries):
+                try:
+                    response = self.client.models.generate_content(
+                        model=MODEL_NAME,
+                        contents=[
+                            types.Part.from_bytes(data=image_data, mime_type=mime),
+                            prompt,
+                        ],
+                    )
+                    break
+                except APIError as e:
+                    last_error = e
+                    # If 503 (Unavailable) or 429 (Resource Exhausted / Rate Limit)
+                    if getattr(e, 'code', None) in (429, 503) and attempt < max_retries - 1:
+                        sleep_time = (backoff_factor ** attempt) + 1
+                        print(f"Gemini API error {e.code}. Retrying in {sleep_time}s... (Attempt {attempt+1}/{max_retries})")
+                        time.sleep(sleep_time)
+                        continue
+                    raise e
+                except Exception as e:
+                    last_error = e
+                    if attempt < max_retries - 1:
+                        sleep_time = (backoff_factor ** attempt) + 1
+                        print(f"Gemini API unexpected error: {str(e)}. Retrying in {sleep_time}s... (Attempt {attempt+1}/{max_retries})")
+                        time.sleep(sleep_time)
+                        continue
+                    raise e
+
+            if not response:
+                raise Exception(f"Failed to generate content after {max_retries} attempts. Last error: {str(last_error)}")
+
             raw = response.text
 
             try:
@@ -85,7 +125,22 @@ class VisionAgent:
                 end = cleaned.rfind("}") + 1
                 data = json.loads(cleaned[start:end])
 
+                store_name = data.get("store_name", "").strip()
                 items = data.get("items", [])
+                
+                # Check for brand in items to default as store name if store name is empty/generic, or if it is Meralco
+                detected_brand = ""
+                for it in items:
+                    b = it.get("brand", "").strip()
+                    if b:
+                        detected_brand = b
+                        break
+
+                if not store_name and detected_brand:
+                    store_name = detected_brand
+                elif detected_brand.lower() == "meralco":
+                    store_name = "Meralco"
+
                 for it in items:
                     it.setdefault("name", "Item")
                     it.setdefault("brand", "")
@@ -96,7 +151,7 @@ class VisionAgent:
 
                 return {
                     "success": True,
-                    "store_name": data.get("store_name", ""),
+                    "store_name": store_name,
                     "date": data.get("date"),
                     "total_amount": float(data.get("total_amount", 0)),
                     "confidence": data.get("confidence", "medium"),
