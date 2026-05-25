@@ -297,6 +297,21 @@ elif page == "Scan Receipt":
                 if r_pay == "Other":
                     r_pay_other = st.text_input("Specify payment", key="scan_pay_o")
 
+            # Confidence score display
+            confidence = data.get("confidence", "medium").lower()
+            confidence_color = "#27ae60" if confidence == "high" else "#FF6B35" if confidence == "medium" else "#e74c3c"
+            confidence_pct = 95 if confidence == "high" else 65 if confidence == "medium" else 35
+            confidence_msg = "Very confident" if confidence == "high" else "Moderately confident" if confidence == "medium" else "Low confidence — review carefully"
+            
+            st.markdown(f'''<div style="background:{confidence_color}15;border-left:4px solid {confidence_color};border-radius:8px;padding:12px 16px;margin-bottom:16px">
+            <div style="display:flex;align-items:center;gap:12px">
+            <div style="font-size:24px;font-weight:700;color:{confidence_color}">{confidence_pct}%</div>
+            <div>
+            <div style="font-weight:600;color:#1B2A4A;font-size:13px">Confidence: {confidence_msg}</div>
+            <div style="font-size:11px;color:#7a8b9e;margin-top:2px">AI extraction reliability score — review items before saving if confidence is low</div>
+            </div>
+            </div></div>''', unsafe_allow_html=True)
+
             if items:
                 st.markdown('<div class="section-title">Extracted Items</div>', unsafe_allow_html=True)
                 hc = st.columns([0.4, 2, 1.2, 1.2, 1.8, 0.6])
@@ -330,9 +345,8 @@ elif page == "Scan Receipt":
                                 notes=f"From receipt: {r_store}")
                             if ok: saved += 1
                     if saved:
-                        st.success(f"{saved} item(s) saved.")
                         st.session_state.extracted_data = None
-                        st.balloons()
+                        st.info(f"✓ {saved} item(s) successfully saved to your expense history.")
             else:
                 st.warning("No items extracted. Try a clearer photo.")
 
